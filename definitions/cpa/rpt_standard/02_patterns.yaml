@@ -1,0 +1,12 @@
+# Patterns = short label sequences, searched and reported on their own, and used as
+# building blocks in segments. NAME*n repeats; a pattern may use other patterns.
+#
+#   short form:  name: [LABEL, LABEL, ...]
+#   long form:   name: {description: ..., sequence: [...], collapse: [RELAX]}
+#                collapse = optional, replaces settings.collapse (00_settings.yaml) when this
+#                pattern is searched on its own. Inside a segment the segment's collapse applies.
+
+patterns:
+  init_dch:  [INIT_DCH, RELAX]
+  std_cycle: [CHA_C3_CC, RELAX, DCH_C3_CC, RELAX]
+  pulse:     [DCH_C3_CC_PARTIAL, RELAX, DCH_Pulse_18s_1.5C, RELAX, CHA_Pulse_18s_1.5C, RELAX]

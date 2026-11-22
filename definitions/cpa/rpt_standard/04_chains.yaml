@@ -1,0 +1,12 @@
+# Chains = ordered segments. Between two segments only `between` labels may appear
+# (empty = directly adjacent). between_pairs replaces the list for one pair (A>B).
+# Variants are tried in order at each place; the first that fits wins.
+
+chains:
+  INIT_RPT_STORAGE_RPT:
+    description: Initial RPT, storage break, RPT
+    variants:
+      CH_01: [INIT_RPT, RPT]
+    between: [RELAX, GAP, STORAGE_28D, STORAGE_56D, STORAGE_84D, STORAGE_112D]
+    between_pairs:
+      INIT_RPT>RPT: [RELAX, GAP, STORAGE_28D]

@@ -1,0 +1,32 @@
+# Segments = tests built from patterns and labels. Variants are tried in order at each
+# place in the data; the first that fits wins. Variant names kept from config_rpt (RPT_01, …).
+#   collapse: [..]  optional, replaces settings.collapse (00_settings.yaml) for this segment;
+#                   it applies to the whole label sequence of the segment, including its patterns
+
+segments:
+  INIT_STD_CAP_CHECK:
+    description: Initial capacity check — incoming discharge + C/3 cycles
+    variants:
+      STD_CAP_CHECK_INIT_01: [init_dch, std_cycle*3]
+      STD_CAP_CHECK_INIT_02: [init_dch, std_cycle*2]
+
+  INIT_RPT:
+    description: Initial RPT — capacity check + DCIR pulses
+    variants:
+      INIT_RPT_01: [init_dch, std_cycle*3, CHA_C3_CC, RELAX, pulse*4]
+      INIT_RPT_02: [init_dch, std_cycle*3, CHA_C3_CC, RELAX, pulse*3]
+      INIT_RPT_03: [init_dch, std_cycle*2, CHA_C3_CC, RELAX, pulse*4]
+      INIT_RPT_04: [init_dch, std_cycle*2, CHA_C3_CC, RELAX, pulse*3]
+
+  STD_CAP_CHECK:
+    description: Capacity check — C/3 cycles
+    variants:
+      STD_CAP_CHECK_01: [std_cycle*3]
+
+  RPT:
+    description: RPT — capacity check + DCIR pulses
+    variants:
+      RPT_01: [std_cycle*3, CHA_C3_CC, RELAX, pulse*4]
+      RPT_02: [std_cycle*3, CHA_C3_CC, RELAX, pulse*3]
+      RPT_03: [std_cycle*2, CHA_C3_CC, RELAX, pulse*4]
+      RPT_04: [std_cycle*2, CHA_C3_CC, RELAX, pulse*3]

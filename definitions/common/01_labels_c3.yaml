@@ -1,0 +1,85 @@
+# Shared labels for C/3 capacity checks, 1.5C 18 s pulses, rests, gaps and storage breaks.
+# Converted 1:1 from TB_CPA_Segmentation/definitions/builtin/rpt.yaml (same limits, same order).
+#
+# Label = step-feature conditions. Order = priority: the first label that fits a step wins.
+#   column: [low, high]        range (null = open side). Limits may be formulas.
+#   column: value              equality, 'A|B' = any of
+#   prev.column / next.column  condition on the previous / next step
+#   - {...}  - {...}           list of blocks = OR (rows inside one block = AND)
+# Formula names: cap, e_nom, vmax, vmin, vbc, std_temp, tol, prev.X, next.X, abs, min, max, inf
+
+labels:
+  DCH_C3_CC:
+    description: Full C/3 discharge
+    Current_A_median:       [-cap*1.05/3,  -cap*0.95/3]
+    delta_Capacity_step_Ah: [-cap*1.1,     -cap*0.65]
+    Voltage_V_end:          [vmin-0.5,     vmin+0.05]
+    T_Cell_degC_start:      [std_temp-tol, std_temp+tol]
+    time_duration_s:        [0.5*3*3600,   1.1*3*3600]
+
+  INIT_DCH:                 # before DCH_C3_CC_PARTIAL: same electrics, first 5 steps only
+    description: Initial partial C/3 discharge (first steps of file)
+    Current_A_median:       [-cap*1.05/3,  -cap*0.95/3]
+    delta_Capacity_step_Ah: [-cap*0.65,    -cap*0.001]
+    Voltage_V_end:          [vmin-0.5,     vmin+0.05]
+    T_Cell_degC_start:      [std_temp-tol, std_temp+tol]
+    step_id:                [0, 5]
+
+  DCH_C3_CC_PARTIAL:
+    description: Partial C/3 discharge
+    Current_A_median:       [-cap*1.05/3,  -cap*0.95/3]
+    delta_Capacity_step_Ah: [-cap*0.7,     -cap*0.001]
+    T_Cell_degC_start:      [std_temp-tol, std_temp+tol]
+
+  CHA_C3_CC:
+    description: Full C/3 charge
+    Current_A_median:       [cap*0.95/3,   cap*1.05/3]
+    delta_Capacity_step_Ah: [cap*0.65,     cap*1.1]
+    Voltage_V_end:          [vbc+0.01,     vmax+0.01]
+    T_Cell_degC_start:      [std_temp-tol, std_temp+tol]
+    time_duration_s:        [0.5*3*3600,   2*3*3600]
+
+  CHA_C3_CC_PARTIAL:
+    description: Partial C/3 charge
+    Current_A_median:       [cap*0.95/3,   cap*1.05/3]
+    delta_Capacity_step_Ah: [cap*0.001,    cap*0.7]
+    T_Cell_degC_start:      [std_temp-tol, std_temp+tol]
+
+  DCH_Pulse_18s_1.5C:
+    description: 18 s discharge pulse at 1.5C
+    Current_A_median:       [-cap*1.05*1.5, -cap*0.95*1.5]
+    time_duration_s:        [17, 19]
+
+  CHA_Pulse_18s_1.5C:
+    description: 18 s charge pulse at 1.5C
+    Current_A_median:       [cap*0.95*1.5, cap*1.05*1.5]
+    time_duration_s:        [17, 19]
+
+  RELAX:                    # rest step OR near-zero-duration transition step
+    - {description: Rest (no current), Current_A_median: [-1e-6, 1e-6], time_duration_s: [1, 3600*24]}
+    - {time_duration_s: [0, 1e-4]}
+
+  STORAGE_28D:
+    description: Storage break ~28 days
+    step_name:              Gap
+    time_duration_s:        [3600*24*27, 3600*24*32]
+
+  STORAGE_56D:
+    description: Storage break ~56 days
+    step_name:              Gap
+    time_duration_s:        [3600*24*55, 3600*24*60]
+
+  STORAGE_84D:
+    description: Storage break ~84 days
+    step_name:              Gap
+    time_duration_s:        [3600*24*83, 3600*24*88]
+
+  STORAGE_112D:
+    description: Storage break ~112 days
+    step_name:              Gap
+    time_duration_s:        [3600*24*110, 3600*24*116]
+
+  GAP:
+    description: Data gap (no measurement)
+    step_name:              Gap
+    time_duration_s:        [600, null]

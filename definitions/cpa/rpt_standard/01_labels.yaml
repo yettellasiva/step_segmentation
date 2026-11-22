@@ -1,0 +1,12 @@
+# Labels for the standard RPT campaign (C48T1 / C25T1).
+# Project labels below are checked BEFORE the included shared labels, so a label here
+# can refine or replace a shared one of the same name.
+
+include: [common/01_labels_c3.yaml]    # path relative to the definitions/ folder
+
+labels: {}
+  # Example — a short step inside a C/3 discharge whose current jumps vs. the previous step:
+  # DCH_SPIKE:
+  #   prev.Current_A_median: [-cap*1.05/3, -cap*0.95/3]
+  #   Current_A_median:      [null, prev.Current_A_median*1.5]
+  #   time_duration_s:       [0, 30]

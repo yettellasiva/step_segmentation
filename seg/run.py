@@ -1,14 +1,16 @@
 """
 run.py
 ------
-Run the four levels for one cell or a whole sample.
+Run label → merge → label → patterns → segments → chains for one cell or a whole sample.
 
     labeled_steps, detections = segment_cell(steps, definition, cell_id)   # one cell, in memory
     summary = process_sample(sample_name, sample_config)                   # all cells → files
 
 Files per cell, next to the step features (<base_path>/04_Evaluated_Data/<cell_id>/):
-    <cell_id>_segments.csv        one row per detection and per part (DETECTION_COLUMNS)
-    <cell_id>_steps_labeled.csv   optional: step table + label
+    <cell_id>_segments.csv        one row per detection and per part (DETECTION_COLUMNS),
+                                  positions refer to the original step file
+    <cell_id>_steps_labeled.csv   optional: merged step table + pass-2 label + merge columns
+    <cell_id>_segments_plot.html  optional: current coloured by label + detections (seg/plot.py)
     <cell_id>_segments_meta.json  fingerprint for skip/rerun
 Log per sample (like TB_CPA_Evaluate): <base_path>/06_Logs/debug_logs/segmentation_debug_<host>.log
 """
@@ -27,15 +29,16 @@ import yaml
 
 from .chains import find_chains
 from .definitions import load_definition
-from .labeling import label_steps
+from .labeling import item_condition_masks, label_steps
 from .patterns import find_patterns
 from .segments import find_segments
+from .merge import merge_steps
 
 logger = logging.getLogger(__name__)
 PACKAGE_LOGGER = logging.getLogger("seg")
 LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(message)s"
 
-SEG_V2_VERSION = "1.1"   # bump on any labeling/pattern/segment/chain logic change → all cells rerun
+SEG_V2_VERSION = "2.1"   # bump on any labeling/merge/pattern/segment/chain logic change → all cells rerun
 SAMPLES_FILE = Path(__file__).resolve().parents[1] / "samples.yaml"
 STEP_FILE_GLOB = "*step*feature*.csv"
 REQUIRED_STEP_COLUMNS = ["step_id", "row_start", "row_end", "eval_version"]
@@ -117,7 +120,7 @@ def check_step_table(steps: pd.DataFrame) -> str:
 
 
 def segment_cell(steps: pd.DataFrame, definition: dict, cell_id: str = "") -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Labels → patterns → segments → chains for one cell.
+    """Label (pass 1) → merge → label (pass 2) → patterns → segments → chains for one cell.
 
     Parameters
     ----------
@@ -128,29 +131,45 @@ def segment_cell(steps: pd.DataFrame, definition: dict, cell_id: str = "") -> tu
     Returns
     -------
     (labeled_steps, detections)
-      labeled_steps : `steps` with index 0..n-1 and column 'label'
+      labeled_steps : the MERGED step table (index 0..m-1) with pass-2 'label' and the merge columns
+                      (orig_pos_start, orig_pos_end, n_merged, n_bridged, bridged_s, merged_step_ids)
       detections    : DataFrame with DETECTION_COLUMNS, one row per detection ('(whole)') and per part.
-                      Steps of a row:    labeled_steps.iloc[step_pos_start : step_pos_end + 1]
+                      Positions refer to the ORIGINAL step file:
+                      Steps of a row:    steps.reset_index(drop=True).iloc[step_pos_start : step_pos_end + 1]
                       Raw data of a row: processed_data parquet .iloc[row_start : row_end]
+
+    Raises
+    ------
+    ValueError from check_step_table if the step table is too old or misses columns
 
     Example
     -------
-        definition = load_definition("cpa/rpt_standard", read_samples()["C48T1_B3"])
+        definition = load_definition("custom/c48t1_definitions", read_samples()["C48T1_B3"])
         labeled_steps, detections = segment_cell(pd.read_csv(step_file), definition, "FCA08J0011")
         detections[detections.part == "(whole)"]
     """
     check_step_table(steps)
-    labeled_steps = label_steps(steps, definition)
-    rows = find_patterns(labeled_steps, definition)
-    segment_rows = find_segments(labeled_steps, definition)
+    original = steps.reset_index(drop=True)
+    first_pass = label_steps(original, definition)                       # finds the bridges
+    labeled_steps = label_steps(merge_steps(first_pass, definition["settings"]["merge"]), definition)
+    # item masks once per cell; their missing columns go into the same list as the label ones (run summary)
+    missing_columns = set(labeled_steps.attrs.get("missing_columns") or [])
+    item_masks = item_condition_masks(labeled_steps, definition, missing_columns)
+    labeled_steps.attrs["missing_columns"] = sorted(missing_columns)
+    rows = find_patterns(labeled_steps, definition, item_masks)
+    segment_rows = find_segments(labeled_steps, definition, item_masks)
     rows += segment_rows + find_chains(labeled_steps, segment_rows, definition)
 
-    step_ids = labeled_steps["step_id"].to_numpy(float)
-    row_starts, row_ends = labeled_steps["row_start"].to_numpy(), labeled_steps["row_end"].to_numpy()
+    # positions above refer to the merged table → translate to the original step file
+    step_ids = original["step_id"].to_numpy(float)
+    row_starts, row_ends = original["row_start"].to_numpy(), original["row_end"].to_numpy()
+    orig_start, orig_end = labeled_steps["orig_pos_start"].to_numpy(), labeled_steps["orig_pos_end"].to_numpy()
     for row in rows:
-        first, last = row["step_pos_start"], row["step_pos_end"]
+        first, last = int(orig_start[row["step_pos_start"]]), int(orig_end[row["step_pos_end"]])
         row.update(cell_id=cell_id, step_id_start=step_ids[first], step_id_end=step_ids[last],
-                   row_start=int(row_starts[first]), row_end=int(row_ends[last]), n_steps=last - first + 1)
+                   row_start=int(row_starts[first]), row_end=int(row_ends[last]), n_steps=last - first + 1,
+                   step_pos_start=first, step_pos_end=last)
+
     detections = pd.DataFrame(rows, columns=DETECTION_COLUMNS)
     detections["part_instance"] = detections["part_instance"].astype("Int64")
     detections["part_variant"] = detections["part_variant"].fillna("")
@@ -183,6 +202,10 @@ def find_step_files(base_path: Path | str, cell_ids: list | None = None) -> dict
     ----------
     base_path : sample base path
     cell_ids  : None / [] = all cells, else only these (missing ones are logged)
+
+    Returns
+    -------
+    {cell_id: Path}; with several matching files in one folder the last in alphabetical order wins (warning)
     """
     evaluated_folder = Path(base_path) / "04_Evaluated_Data"
     step_files = {}
@@ -202,7 +225,8 @@ def find_step_files(base_path: Path | str, cell_ids: list | None = None) -> dict
 
 def process_sample(sample_name: str, sample_config: dict, cell_ids: list | None = None,
                    skip_rerun: bool = True, export_labels: bool = False,
-                   definition_name: str | None = None, log_folder: Path | str | None = None) -> pd.DataFrame:
+                   definition_name: str | None = None, log_folder: Path | str | None = None,
+                   export_plot: bool = False) -> pd.DataFrame:
     """Run all cells of one sample (or only `cell_ids`) and write the files.
 
     Parameters
@@ -214,6 +238,7 @@ def process_sample(sample_name: str, sample_config: dict, cell_ids: list | None 
     export_labels   : also write <cell_id>_steps_labeled.csv
     definition_name : use this definition instead of sample_config['definition']
     log_folder      : log file folder; None = <base_path>/06_Logs/debug_logs
+    export_plot     : also write <cell_id>_segments_plot.html (needs plotly)
 
     Returns
     -------
@@ -223,10 +248,13 @@ def process_sample(sample_name: str, sample_config: dict, cell_ids: list | None 
     Raises
     ------
     DefinitionError if the definition has problems (before any cell is processed)
+    ValueError if the sample has no 'definition' or no 'base_path'
     """
     definition_name = definition_name or sample_config.get("definition")
     if not definition_name:
         raise ValueError(f"sample '{sample_name}' has no 'definition:' in samples.yaml")
+    if not sample_config.get("base_path"):
+        raise ValueError(f"sample '{sample_name}' has no 'base_path:' in samples.yaml")
     log_file = _open_log_file(Path(log_folder) if log_folder else
                               Path(sample_config["base_path"]) / "06_Logs" / "debug_logs")
     try:
@@ -236,7 +264,7 @@ def process_sample(sample_name: str, sample_config: dict, cell_ids: list | None 
         step_files = find_step_files(sample_config["base_path"], cell_ids)
         logger.info(f"{len(step_files)} cell(s) to consider")
         summary = [_process_cell(sample_name, cell_id, step_file, definition, sample_config,
-                                 skip_rerun, export_labels)
+                                 skip_rerun, export_labels, export_plot)
                    for cell_id, step_file in step_files.items()]
         summary = pd.DataFrame(summary)
         if not summary.empty:
@@ -248,18 +276,21 @@ def process_sample(sample_name: str, sample_config: dict, cell_ids: list | None 
             log_file.close()
 
 
-def _process_cell(sample_name, cell_id, step_file, definition, sample_config, skip_rerun, export_labels) -> dict:
+def _process_cell(sample_name, cell_id, step_file, definition, sample_config, skip_rerun, export_labels,
+                  export_plot=False) -> dict:
     """One cell of process_sample: skip check, segment_cell, write files. Never raises."""
     output_folder = step_file.parent
     segments_csv = output_folder / f"{cell_id}_segments.csv"
     meta_json = output_folder / f"{cell_id}_segments_meta.json"
     labeled_csv = output_folder / f"{cell_id}_steps_labeled.csv"
+    plot_html = output_folder / f"{cell_id}_segments_plot.html"
     result = {"sample": sample_name, "cell_id": cell_id, "status": "", "patterns": 0, "segments": 0,
               "chains": 0, "seconds": 0.0, "message": ""}
     started = time.perf_counter()
     try:
         fingerprint = cell_fingerprint(step_file, definition, sample_config)
-        outputs_exist = segments_csv.exists() and meta_json.exists() and (labeled_csv.exists() or not export_labels)
+        outputs_exist = (segments_csv.exists() and meta_json.exists() and (labeled_csv.exists() or not export_labels)
+                         and (plot_html.exists() or not export_plot))
         if skip_rerun and outputs_exist:
             stored = json.loads(meta_json.read_text(encoding="utf-8"))
             if all(stored.get(k) == v for k, v in fingerprint.items()):
@@ -272,6 +303,17 @@ def _process_cell(sample_name, cell_id, step_file, definition, sample_config, sk
         detections.to_csv(segments_csv, index=False)
         if export_labels:
             labeled_steps.to_csv(labeled_csv, index=False)
+        plot_problem = ""
+        if export_plot:
+            try:                                           # a failed plot must not fail the cell
+                from .plot import plot_cell                # plotly only needed when plots are wanted
+                plot_cell(steps, labeled_steps, detections, plot_html,
+                          title=f"{cell_id} · {sample_name} · {definition['name']}",
+                          default_label=definition["settings"]["default_label"])
+            except Exception as exc:  # noqa: BLE001
+                plot_problem = f"plot failed: {type(exc).__name__}: {exc}"
+                logger.warning(f"  {cell_id}  {plot_problem}")
+                plot_html.unlink(missing_ok=True)          # so the next run with SKIP_RERUN tries again
         meta_json.write_text(json.dumps({**fingerprint, "eval_version": check_step_table(steps),
                                          "written_at": datetime.now().isoformat(timespec="seconds")},
                                         indent=2), encoding="utf-8")
@@ -282,7 +324,8 @@ def _process_cell(sample_name, cell_id, step_file, definition, sample_config, sk
                     f"chains={counts.get('chain', 0)}  [{seconds}s]")
         return {**result, "status": "done", "patterns": int(counts.get("pattern", 0)),
                 "segments": int(counts.get("segment", 0)), "chains": int(counts.get("chain", 0)),
-                "seconds": seconds, "message": f"missing columns: {missing}" if missing else ""}
+                "seconds": seconds,
+                "message": "; ".join(m for m in (f"missing columns: {missing}" if missing else "", plot_problem) if m)}
     except Exception as exc:  # noqa: BLE001 - one bad cell must not stop the sample
         logger.error(f"  FAIL  {cell_id}  {type(exc).__name__}: {exc}")
         logger.debug("traceback", exc_info=True)

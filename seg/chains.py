@@ -6,9 +6,10 @@ Find chains: ordered segments (CH_01: INIT_RPT + RPT*3).
     chain_rows = find_chains(labeled_steps, segment_rows, definition)
 
 Between two consecutive segments only the labels in `between` may appear (none listed =
-the segments must be directly adjacent). `between_pairs: {INIT_RPT>RPT: [RELAX]}` replaces
-the list for that one pair. Variants are tried per location (the first that fits wins);
-matches of one chain never overlap each other.
+the segments must be directly adjacent). `between_pairs: {INIT_RPT>RPT: [REST]}` replaces
+the list for that one pair. Each next segment is the first match of that segment after the
+previous one; if the gap does not fit, the variant fails at this start (no later match is tried).
+Variants are tried per location (the first that fits wins); matches of one chain never overlap each other.
 
 Each instance gives one '(whole)' row plus one row per segment part; part_variant /
 part_instance point to the matching segment row of find_segments.
@@ -35,8 +36,10 @@ def find_chains(labeled_steps: pd.DataFrame, segment_rows: list[dict], definitio
     -------
     Dicts with level="chain", name, variant, instance, part, part_index, part_kind,
     part_variant, part_instance, step_pos_start, step_pos_end:
-      one row with part="(whole)" per instance, then one row per segment
-      (part = segment name, part_variant / part_instance = that segment's variant / instance).
+      one row with part="(whole)", part_index=-1, part_kind="chain" per instance, then one row
+      per segment (part = segment name, part_kind="segment",
+      part_variant / part_instance = that segment's variant / instance).
+    Positions are rows of `labeled_steps` (the merged table), end inclusive.
 
     Example
     -------

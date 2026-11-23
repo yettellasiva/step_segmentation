@@ -1,0 +1,18 @@
+# Segments = tests built from patterns and labels. Variants are tried in order at each
+# place in the data; the first that fits wins. Variant names kept from config_rpt (RPT_01, …).
+# List the longest / most complete variant first.
+# Items are patterns and labels (NAME*n allowed); label items may carry conditions,
+#   e.g. { label: REST, time_duration_s: [3600, null] } = a rest of at least 1 h.
+# Split steps are already joined by merge in 00_settings.yaml.
+
+# shared segment files, path relative to the definitions/ folder; empty = none
+include: []
+
+segments:
+  RPT:
+    variants:
+      RPT_01: [std_cycle*3, CC_CHA_C3, { label: REST, time_duration_s: [3600, null] }, pulse*4]
+
+
+
+

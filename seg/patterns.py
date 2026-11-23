@@ -1,108 +1,95 @@
 """
 patterns.py
 -----------
-Find patterns: fixed label sequences (std_cycle = CHA_C3_CC, RELAX, DCH_C3_CC, RELAX).
+Find patterns: fixed label sequences (std_cycle = CC_CHA_C3, REST, CC_DCH_C3, REST).
 
     pattern_rows = find_patterns(labeled_steps, definition)
 
 Every pattern is searched on its own. Matches of one pattern never overlap each other;
-matches of different patterns may overlap.
+matches of different patterns may overlap. Items with conditions are checked with
+item_condition_masks (labeling.py) on the same table.
 
-Collapse: consecutive repeats of the same collapse label count as one before matching
-(RELAX, RELAX → RELAX); the match still covers all of them. Each pattern uses its own
-`collapse:` list if it has one, otherwise settings.collapse (default [RELAX]).
-
-`collapse_labels` and `match_variants` are shared with segments.py.
+`match_variants` is shared with segments.py.
 """
 from __future__ import annotations
 
 import logging
 
 import pandas as pd
+from .labeling import item_condition_masks
 
 logger = logging.getLogger(__name__)
 
-
-def collapse_labels(labels: list, collapse_set: set) -> tuple[list, list, list]:
-    """Merge consecutive repeats of the same label if it is in `collapse_set`.
-
-    Parameters
-    ----------
-    labels       : label of every step, in order
-    collapse_set : labels whose repeats count as one, e.g. {"RELAX"}
-
-    Returns
-    -------
-    (collapsed_labels, first_positions, last_positions)
-      first/last_positions[i] = first and last step position covered by collapsed_labels[i]
-
-    Example
-    -------
-        collapse_labels(["CHA", "RELAX", "RELAX", "DCH"], {"RELAX"})
-        → (["CHA", "RELAX", "DCH"], [0, 1, 3], [0, 2, 3])
-    """
-    collapsed_labels, first_positions, last_positions = [], [], []
-    for position, label in enumerate(labels):
-        if collapsed_labels and label in collapse_set and label == collapsed_labels[-1]:
-            last_positions[-1] = position
-        else:
-            collapsed_labels.append(label)
-            first_positions.append(position)
-            last_positions.append(position)
-    return collapsed_labels, first_positions, last_positions
-
-
-def match_variants(labels: list, variants: dict, collapse_set: set) -> list[dict]:
+def match_variants(labels: list, variants: dict, item_masks: dict | None = None) -> list[dict]:
     """Search the label sequence left to right; at each position try the variants in order,
     keep the first that fits and continue after it (matches never overlap).
 
     Parameters
     ----------
-    labels       : label of every step, in order
-    variants     : {variant_name: [part, ...]}, part = {"name", "kind", "labels": [label, ...]}
-    collapse_set : see collapse_labels
+    labels     : label of every step (pass 2)
+    variants   : {variant: [part, ...]}, part = {"name", "kind", "labels": [token, ...]}
+                 (as in definition["segments"][name]["variants"])
+    item_masks : {item key: bool array} for items with conditions (item_condition_masks);
+                 a token without a mask is compared with the label
 
     Returns
     -------
-    [{"variant", "step_pos_start", "step_pos_end",
-      "parts": [(part_index, part_name, part_kind, step_pos_start, step_pos_end), ...]}]
-    Positions are rows of the step table, inclusive.
+    One dict per match: {"variant", "step_pos_start", "step_pos_end",
+                         "parts": [(part_index, name, kind, pos_start, pos_end), ...]}
+    positions are rows of the table the labels come from, end inclusive.
+
+    Example
+    -------
+        match_variants(["A", "B", "A", "B"], {"v": [{"name": "A", "kind": "label", "labels": ["A"]},
+                                                    {"name": "B", "kind": "label", "labels": ["B"]}]})
+        → 2 matches: step_pos 0–1 and 2–3
     """
-    collapsed, first_positions, last_positions = collapse_labels(labels, collapse_set)
+    item_masks = item_masks or {}
+    n = len(labels)
+
+    def fits(sequence, i):
+        if not sequence or i + len(sequence) > n:
+            return False
+        for k, token in enumerate(sequence):
+            mask = item_masks.get(token)
+            if not (mask[i + k] if mask is not None else labels[i + k] == token):
+                return False
+        return True
+
     variant_sequences = {variant: [label for part in parts for label in part["labels"]]
                          for variant, parts in variants.items()}
     matches, i = [], 0
-    while i < len(collapsed):
+    while i < n:
         for variant, sequence in variant_sequences.items():
-            length = len(sequence)
-            if length and collapsed[i:i + length] == sequence:
+            if fits(sequence, i):
                 parts, offset = [], i
                 for part_index, part in enumerate(variants[variant]):
                     part_length = len(part["labels"])
-                    parts.append((part_index, part["name"], part["kind"],
-                                  first_positions[offset], last_positions[offset + part_length - 1]))
+                    parts.append((part_index, part["name"], part["kind"], offset, offset + part_length - 1))
                     offset += part_length
-                matches.append({"variant": variant, "step_pos_start": first_positions[i],
-                                "step_pos_end": last_positions[i + length - 1], "parts": parts})
-                i += length
+                matches.append({"variant": variant, "step_pos_start": i,
+                                "step_pos_end": i + len(sequence) - 1, "parts": parts})
+                i += len(sequence)
                 break
         else:
             i += 1
     return matches
 
 
-def find_patterns(labeled_steps: pd.DataFrame, definition: dict) -> list[dict]:
+def find_patterns(labeled_steps: pd.DataFrame, definition: dict, item_masks: dict | None = None) -> list[dict]:
     """Find all instances of every pattern of the definition.
 
     Parameters
     ----------
     labeled_steps : step table with column 'label' (result of label_steps)
-    definition    : result of load_definition (uses 'patterns': labels + collapse of each pattern)
+    definition    : result of load_definition (uses 'patterns', 'item_conditions')
+    item_masks    : result of item_condition_masks for labeled_steps; None = computed here
 
     Returns
     -------
     One dict per instance: {level="pattern", name, variant="", instance, part="(whole)",
     part_index=-1, part_kind="pattern", step_pos_start, step_pos_end}
+    Positions are rows of `labeled_steps` (the merged table), end inclusive.
 
     Example
     -------
@@ -110,11 +97,12 @@ def find_patterns(labeled_steps: pd.DataFrame, definition: dict) -> list[dict]:
         pd.DataFrame(rows).groupby("name").size()
     """
     labels = list(labeled_steps["label"])
+    if item_masks is None:
+        item_masks = item_condition_masks(labeled_steps, definition)
     rows = []
     for pattern_name, pattern in definition["patterns"].items():
         matches = match_variants(labels, {pattern_name: [{"name": pattern_name, "kind": "pattern",
-                                                          "labels": pattern["labels"]}]},
-                                 pattern["collapse"])
+                                                          "labels": pattern["labels"]}]}, item_masks)
         rows += [dict(level="pattern", name=pattern_name, variant="", instance=instance, part="(whole)",
                       part_index=-1, part_kind="pattern",
                       step_pos_start=m["step_pos_start"], step_pos_end=m["step_pos_end"])

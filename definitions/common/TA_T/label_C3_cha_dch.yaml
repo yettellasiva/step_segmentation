@@ -1,0 +1,124 @@
+# -------------------------------- LABEL RULES --------------------------------
+# Order = priority: the first label that fits a step wins.
+#
+# Conditions (all rows of a label must hold = AND)
+#   column: [low, high]          range, low <= x <= high, null = open side
+#   column: value                equality, 'A|B' = any of
+#   prev.column / next.column    condition on the previous / next step
+#   or.<name>: [{...}, {...}]    OR group: one block must hold; ANDed with the other rows
+#   - {...}  - {...}             list of blocks = OR for the whole label
+#
+#   Example: C/3 discharge, chamber OR cell temperature at std_temp
+#     CC_DCH_C3:
+#       Current_A_median: [-cap*1.05/3, -cap*0.95/3]
+#       or.temp:
+#         - {T_Chamber_degC_mean: [std_temp-temp_tol, std_temp+temp_tol]}
+#         - {T_Cell_degC_mean:    [std_temp-temp_tol, std_temp+temp_tol]}
+#
+# Formulas in range limits (numbers or arithmetic, e.g. [cap*0.95/3, cap*1.05/3])
+#   cap       nominal_capacity [Ah]
+#   e_nom     nominal_energy [Wh]      (NaN if missing -> never matches)
+#   vmax      max_volt [V]
+#   vmin      min_volt [V]
+#   vbc       vbc_volt [V]
+#   std_temp  std_temperature [°C]     (default 25)
+#   temp_tol  temp_threshold [± °C]    (default 3)
+#   inf       infinity
+#   prev.X / next.X   column X of the previous / next step (none at the ends -> no match)
+#                     special characters: "prev['SOC_eval_start_%']*2" (quoted)
+#   Functions: abs(x), min(a, b), max(a, b)    Operators: + - * / ** % //
+# ------------------------------------------------------------------------------
+
+labels:
+
+  INIT_CC_DCH_C3: # before CC_DCH_C3_PARTIAL: same electrics, first 2 steps only
+    description: Initial partial C/3 discharge (first steps of file)
+    mode:  DISCHARGE
+    step_id:                [ 0, 1 ]
+    delta_Capacity_step_Ah: [ -cap*0.5, -cap*0.01 ]
+    Voltage_V_end:          [ vmin-0.05, vmin+0.005 ]
+    or.current_check: # C/3 ±3 %, either way of measuring it
+      - { cc_current_A:     [ -cap*1.03/3, -cap*0.97/3 ],
+          phase_coverage:   [ 0.99, null ] }
+      - { Current_A_median: [ -cap*1.03/3, -cap*0.97/3 ],
+          Current_A_std:    [ 0, cap*0.02/3 ] }
+    or.temp_check: # chamber OR cell at std_temp
+    # (cell may heat up: upper limit 2×temp_tol)
+      - { T_Chamber_degC_mean: [ std_temp-temp_tol, std_temp+temp_tol ] }
+      - { T_Cell_degC_mean: [ std_temp-temp_tol, std_temp+temp_tol*2 ] }
+
+  CC_DCH_C3:
+    description: Full C/3 constant current discharge at 25°C
+    mode:  DISCHARGE
+    delta_Capacity_step_Ah: [ -cap*1.1,    -cap*0.6 ]
+    time_duration_s: [ 0.5*3*3600,  1.2*3*3600 ]       # 1.5 h … 3.6 h
+    Voltage_V_end: [ vmin-0.05, vmin+0.005 ]
+    or.current_check: # C/3 ±3 %, either way of measuring it
+      - { cc_current_A: [ -cap*1.03/3, -cap*0.97/3 ],
+          phase_coverage: [ 0.99, null ] }
+      - { Current_A_median: [ -cap*1.03/3, -cap*0.97/3 ],
+          Current_A_std: [ 0, cap*0.02/3 ] }
+    or.temp_check: # chamber OR cell at std_temp
+    # (cell may heat up: upper limit 2×temp_tol)
+      - { T_Chamber_degC_mean: [ std_temp-temp_tol, std_temp+temp_tol ] }
+      - { T_Cell_degC_mean: [ std_temp-temp_tol, std_temp+temp_tol*2 ] }
+
+  CC_DCH_C3_PARTIAL:
+    description: Partial C/3 discharge
+    mode:  DISCHARGE
+    delta_Capacity_step_Ah: [ -cap*0.98, -cap*0.001 ]
+    or.current_check: # C/3 ±3 %
+      - { cc_current_A: [ -cap*1.03/3, -cap*0.97/3 ],
+          phase_coverage: [ 0.99, null ] }
+      - { Current_A_median: [ -cap*1.03/3, -cap*0.97/3 ],
+          Current_A_std: [ 0, cap*0.02/3 ] }
+    or.temp_check: # chamber OR cell at std_temp
+    # (cell may heat up: upper limit 2×temp_tol)
+      - { T_Chamber_degC_mean: [ std_temp-temp_tol, std_temp+temp_tol ] }
+      - { T_Cell_degC_mean: [ std_temp-temp_tol, std_temp+temp_tol*2 ] }
+
+  INIT_CC_CHA_C3: # before CC_CHA_C3_PARTIAL: same electrics, first 2 steps only
+    description: Initial partial C/3 charge (first steps of file)
+    mode:  CHARGE
+    step_id: [ 0, 1 ]
+    delta_Capacity_step_Ah: [ cap*0.3, cap*0.9 ]
+    Voltage_V_end: [ vmax-0.005, vmax+0.005 ]
+    or.current_check: # C/3 ±3 %
+      - { cc_current_A: [ cap*0.97/3, cap*1.03/3 ],
+          phase_coverage: [ 0.99, null ] }
+      - { Current_A_median: [ cap*0.97/3, cap*1.03/3 ],
+          Current_A_std: [ 0, cap*0.02/3 ] }
+    or.temp_check: # chamber OR cell at std_temp
+    # (cell may heat up: upper limit 2×temp_tol)
+      - { T_Chamber_degC_mean: [ std_temp-temp_tol, std_temp+temp_tol ] }
+      - { T_Cell_degC_mean: [ std_temp-temp_tol, std_temp+temp_tol*2 ] }
+
+  CC_CHA_C3:
+    description: Full C/3 charge
+    mode:  CHARGE
+    delta_Capacity_step_Ah: [ cap*0.65, cap*1.1 ]
+    time_duration_s:        [ 0.5*3*3600, 2*3*3600 ]       # 1.5 h … 6 h
+    Voltage_V_end:          [ vmax-0.005, vmax+0.005 ]
+    or.current_check: # C/3 ±3 %
+      - { cc_current_A:     [ cap*0.97/3, cap*1.03/3 ],
+          phase_coverage:   [ 0.99, null ] }
+      - { Current_A_median: [ cap*0.97/3, cap*1.03/3 ],
+          Current_A_std:    [ 0, cap*0.02/3 ] }
+    or.temp_check: # chamber OR cell at std_temp
+    # (cell may heat up: upper limit 2×temp_tol)
+      - { T_Chamber_degC_mean: [ std_temp-temp_tol, std_temp+temp_tol ] }
+      - { T_Cell_degC_mean: [ std_temp-temp_tol, std_temp+temp_tol*2 ] }
+
+  CC_CHA_C3_PARTIAL:
+    mode:  CHARGE
+    description: Partial C/3 charge
+    delta_Capacity_step_Ah: [ cap*0.001, cap*0.98 ]
+    or.current_check: # C/3 ±3 %
+      - { cc_current_A: [ cap*0.97/3, cap*1.03/3 ],
+          phase_coverage: [ 0.99, null ] }
+      - { Current_A_median: [ cap*0.97/3, cap*1.03/3 ],
+          Current_A_std: [ 0, cap*0.02/3 ] }
+    or.temp_check: # chamber OR cell at std_temp
+    # (cell may heat up: upper limit 2×temp_tol)
+      - { T_Chamber_degC_mean: [ std_temp-temp_tol, std_temp+temp_tol ] }
+      - { T_Cell_degC_mean: [ std_temp-temp_tol, std_temp+temp_tol*2 ] }

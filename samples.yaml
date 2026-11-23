@@ -1,37 +1,48 @@
 # Sample configs (hand-edited). One entry per sample:
 #   NAME: {base_path, nominal_capacity [Ah], nominal_energy [Wh], max_volt, min_volt, vbc_volt, definition}
 # Optional: std_temperature (default 25), temp_threshold (default 3).
-# definition = folder below definitions/ (subfolders allowed, e.g. cpa/rpt_standard) with the
+# definition = folder below definitions/ (subfolders allowed, e.g. custom/c48t1_definitions) with the
 #              numbered YAML files for this sample.
 
 
+# Parameters like nominal_capacity [Ah], nominal_energy [Wh], max_volt, min_volt, vbc_volt are used in labelling
+
 C48T1_B3:      {base_path: //defabdfs.r02.vwgroup.com/TE/GI/1/PowerCo_C48T1_test_data/02_CPA/B3_sample,
                 nominal_capacity: 213.2, nominal_energy: 701.8, max_volt: 3.8, min_volt: 2.5, vbc_volt: 3.5,
-                definition: cpa/rpt_standard}
+                std_temperature: 25, temp_threshold: 3, definition: custom/c48t1_definitions}
+
 C48T1_C1-2:    {base_path: //defabdfs.r02.vwgroup.com/TE/GI/1/PowerCo_C48T1_test_data/02_CPA/C1-2_sample,
                 nominal_capacity: 213.2, nominal_energy: 690.5, max_volt: 3.8, min_volt: 2.5, vbc_volt: 3.5,
-                definition: cpa/rpt_standard}
+                std_temperature: 25, temp_threshold: 3, definition: custom/c48t1_definitions}
+
 C48T1_C1-2-03S: {base_path: //defabdfs.r02.vwgroup.com/TE/GI/1/PowerCo_C48T1_test_data/02_CPA/C1-2-03S_sample,
                 nominal_capacity: 213.2, nominal_energy: 690.5, max_volt: 3.8, min_volt: 2.5, vbc_volt: 3.5,
-                definition: cpa/rpt_standard}
+                std_temperature: 25, temp_threshold: 3, definition: custom/c48t1_definitions}
+
 C48T1_A0:      {base_path: //defabdfs.r02.vwgroup.com/TE/GI/1/PowerCo_C48T1_test_data/02_CPA/A0_sample,
                 nominal_capacity: 215,   nominal_energy: 690,   max_volt: 3.8, min_volt: 2.5, vbc_volt: 3.5,
-                definition: cpa/rpt_standard}
+                std_temperature: 25, temp_threshold: 3, definition: custom/c48t1_definitions}
+
 C48T1_A1:      {base_path: //defabdfs.r02.vwgroup.com/TE/GI/1/PowerCo_C48T1_test_data/02_CPA/A1_sample,
                 nominal_capacity: 215,   nominal_energy: 690,   max_volt: 3.8, min_volt: 2.5, vbc_volt: 3.5,
-                definition: cpa/rpt_standard}
+                std_temperature: 25, temp_threshold: 3, definition: custom/c48t1_definitions}
+
 C48T1_B1:      {base_path: //defabdfs.r02.vwgroup.com/TE/GI/1/PowerCo_C48T1_test_data/02_CPA/B1_sample,
                 nominal_capacity: 213.8, nominal_energy: 685.6, max_volt: 3.8, min_volt: 2.5, vbc_volt: 3.5,
-                definition: cpa/rpt_standard}
+                std_temperature: 25, temp_threshold: 3, definition: custom/c48t1_definitions}
+
 C48T1_B2-1:    {base_path: //defabdfs.r02.vwgroup.com/TE/GI/1/PowerCo_C48T1_test_data/02_CPA/B2-1_sample,
                 nominal_capacity: 215.9, nominal_energy: 699,   max_volt: 3.8, min_volt: 2.5, vbc_volt: 3.5,
-                definition: cpa/rpt_standard}
+                std_temperature: 25, temp_threshold: 3, definition: custom/c48t1_definitions}
+
 C48T1_B2-2:    {base_path: //defabdfs.r02.vwgroup.com/TE/GI/1/PowerCo_C48T1_test_data/02_CPA/B2-2_sample,
                 nominal_capacity: 215.9, nominal_energy: 701.5, max_volt: 3.8, min_volt: 2.5, vbc_volt: 3.5,
-                definition: cpa/rpt_standard}
+                std_temperature: 25, temp_threshold: 3, definition: custom/c48t1_definitions}
+
 C25T1_A1:      {base_path: //defabdfs.r02.vwgroup.com/TE/GI/1/PowerCo_C25T1_test_data/02_CPA/A1_sample,
                 nominal_capacity: 109,   nominal_energy: 352.08, max_volt: 3.8, min_volt: 2.5, vbc_volt: 3.5,
-                definition: cpa/rpt_standard}
+                std_temperature: 25, temp_threshold: 3, definition: custom/c25t1_definitions}
+
 C25T1_B1:      {base_path: //defabdfs.r02.vwgroup.com/TE/GI/1/PowerCo_C25T1_test_data/02_CPA/B1_sample,
                 nominal_capacity: 107.15, nominal_energy: 346.9, max_volt: 3.8, min_volt: 2.5, vbc_volt: 3.5,
-                definition: cpa/rpt_standard}
+                std_temperature: 25, temp_threshold: 3, definition: custom/c25t1_definitions}

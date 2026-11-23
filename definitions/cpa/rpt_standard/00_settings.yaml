@@ -1,5 +1,0 @@
-# Settings for this definition (00_settings.yaml may only contain `settings:`).
-
-settings:
-  collapse: [RELAX]          # same-label repeats count as one before matching (RELAX, RELAX → RELAX)
-  default_label: NO_LABEL    # label given to steps that fit no label

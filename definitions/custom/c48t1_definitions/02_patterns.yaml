@@ -1,0 +1,26 @@
+# Patterns = short label sequences, searched and reported on their own, and used as
+# building blocks in segments. NAME*n repeats; a pattern may use other patterns.
+#
+#   short form:  name: [LABEL, LABEL, ...]
+#   long form:   name: {description: ..., sequence: [...]}
+#   item with conditions (only on labels, checked on the merged steps):
+#                - { label: REST, time_duration_s: [ 14*60, 16*60 ] }    # optional repeat: n
+#
+# Split steps (rest split in two, CC phase interrupted by a spike) are already joined by
+# merge in 00_settings.yaml, so write one REST, not REST, REST.
+
+# shared pattern files, path relative to the definitions/ folder; empty = none
+include: []
+
+patterns:
+  cha_rest15_dch:
+    - CC_CHA_C3
+    - { label: REST, time_duration_s: [ 14*60, 16*60 ] }    # REST lasting 14–16 min
+    - CC_DCH_C3
+
+  std_cycle: [CC_CHA_C3, REST, CC_DCH_C3, REST]             # plain items work as before
+
+  init_dch: [ INIT_DCH, REST ]
+
+  pulse: [ DCH_C3_CC_PARTIAL, REST, DCH_Pulse_18s_1.5C, REST, CHA_Pulse_18s_1.5C, REST ]
+

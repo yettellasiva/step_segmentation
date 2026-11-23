@@ -2,7 +2,11 @@
 # Project labels below are checked BEFORE the included shared labels, so a label here
 # can refine or replace a shared one of the same name.
 
-include: [common/01_labels_c3.yaml]    # path relative to the definitions/ folder
+ # path relative to the definitions/ folder
+include: [common/TA_T/label_C3_cha_dch.yaml,
+          common/TA_T/label_rest.yaml,
+          common/TA_T/label_storage.yaml,
+          common/TA_T/label_spike.yaml]
 
 labels: {}
   # Example — a short step inside a C/3 discharge whose current jumps vs. the previous step:

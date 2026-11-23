@@ -1,0 +1,9 @@
+# Settings for this definition (00_settings.yaml may only contain `settings:`).
+
+settings:
+  default_label: NO_LABEL
+  merge:
+    join_adjacent: [ REST ]            # consecutive steps with this label → one row
+    bridges:                           # A, BRIDGE, B → one row when A and B have the same mode
+      REST_SPIKE:    3                 # max. per merged row; null = no limit
+      CURRENT_SPIKE: 5

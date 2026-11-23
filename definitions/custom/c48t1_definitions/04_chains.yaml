@@ -2,6 +2,9 @@
 # (empty = directly adjacent). between_pairs replaces the list for one pair (A>B).
 # Variants are tried in order at each place; the first that fits wins.
 
+# shared chain files, path relative to the definitions/ folder; empty = none
+include: []
+
 chains:
   INIT_RPT_STORAGE_RPT:
     description: Initial RPT, storage break, RPT

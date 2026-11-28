@@ -1,0 +1,338 @@
+STEP FEATURES COLUMN GUIDE
+==========================
+
+1. STEP IDENTITY AND STRUCTURE
+------------------------------
+step_id
+    Calculated step identifier. Normal detected steps are usually integer-valued.
+    A virtual gap inserted between two steps uses the previous step_id + 0.5.
+
+mode
+    Step-level operating direction/type inherited from Mode_calc.
+    Typical values in the evaluated data are:
+      - CHARGE
+      - DISCHARGE
+      - REST
+      - GAP
+    This is different from step_phase: mode describes the general step direction,
+    while step_phase describes the detected electrical control phase.
+
+cycle_number
+    Cycle value taken from the first row of the calculated step.
+
+n_rows
+    Number of raw data rows belonging to the step. GAP rows have n_rows = 0.
+
+step_name
+    First available source Step_name within the calculated step. Typical source
+    values include Charge, Discharge, Rest, Control, and Gap.
+
+cycler_stepid_start / cycler_stepid_end
+    First and last original test-institute/cycler Step_id contained in the
+    calculated step.
+
+n_cycler_steps
+    Number of unique original cycler Step_id values contained in the calculated
+    step. It can be greater than 1 when several cycler steps were merged, for
+    example a combined CC-CV step or consecutive rest/control sections.
+
+row_start / row_end
+    Positional raw-data slice using Python's half-open convention [start, end).
+    Raw rows for a step are obtained with:
+        cell_df.iloc[row_start:row_end]
+    For a GAP row, row_start equals row_end because no raw rows belong to it.
+
+2. TIME COLUMNS
+---------------
+time_start_s / time_end_s
+    Unix epoch timestamps in seconds for the first and last valid time samples.
+
+ time_duration_s
+    time_end_s - time_start_s. This is the timestamp span, not n_rows multiplied
+    by the sampling interval.
+
+time_median_interval_s
+    Median difference between consecutive valid timestamps within the step.
+    Useful for identifying the typical sampling interval.
+
+3. SIGNAL SUMMARY COLUMNS
+-------------------------
+The following naming pattern is used for Voltage_V, Current_A,
+Capacity_step_Ah, and Energy_step_Wh:
+
+<signal>_start
+    First sample in the calculated step.
+
+<signal>_end
+    Last sample in the calculated step.
+
+<signal>_mean
+    Arithmetic mean of all non-missing samples in the calculated step.
+
+<signal>_at_<t>s
+    Signal value t seconds after the first valid timestamp, obtained by linear
+    interpolation when safe.
+
+Main elapsed-time values:
+    0.01, 0.1, 1, 2, 10, 18, 30, 60, and 180 seconds
+
+Additional elapsed-time values for Voltage_V:
+    900, 1800, and 3600 seconds
+
+An elapsed-time value is NaN when:
+    - no valid time/signal pair exists;
+    - the step ends before the target time;
+    - interpolation would cross a gap larger than
+      min(2 x elapsed_time, 60 s).
+
+End-of-step exceptions:
+    If a step ends only slightly before 10 s or 18 s (within 0.1 s), or before
+    180 s (within 1.0 s), the final valid value is used instead of NaN.
+
+Sign convention in the sample data:
+    - positive current/capacity/energy change: charge direction;
+    - negative current/capacity/energy change: discharge direction;
+    - approximately zero current: rest.
+    Always verify this convention against the upstream harmonized data source.
+
+4. CALCULATED BATTERY QUANTITIES
+--------------------------------
+For each quantity below, _start and _end contain the first and last values in the
+step:
+
+Q_Tot_Cha_calc_start / _end
+    Cumulative calculated charged capacity [Ah].
+
+Q_Tot_Dch_calc_start / _end
+    Cumulative calculated discharged capacity [Ah].
+
+E_Tot_Cha_calc_start / _end
+    Cumulative calculated charged energy [Wh].
+
+E_Tot_Dch_calc_start / _end
+    Cumulative calculated discharged energy [Wh].
+
+FCE_calc_start / _end
+    Full-cycle-equivalent value at the start/end of the step.
+
+Capacity_Ah_start / _end
+    Corrected capacity state at the start/end of the step [Ah].
+
+SOC_corrected_start / _end
+    Corrected state of charge at the start/end of the step [%]. Values may be
+    close to, slightly below, or slightly above 0-100 due to calculation and
+    measurement tolerances.
+
+Cap_jump_in_step
+    Boolean:
+      - True: at least one source row in the step has Cap_jump_unexplained=True.
+      - False: no unexplained capacity jump was flagged, or the source flag was
+        unavailable.
+
+Q_std
+    Standard/reference capacity used by the evaluation at this step [Ah].
+
+Q_std_ref
+    Boolean marker indicating a step selected as a Q_std reference/update step.
+
+E_std
+    Standard/reference energy associated with the evaluation [Wh].
+
+5. CURRENT STATISTICS
+---------------------
+Current_A_median
+    Median current over all valid samples in the step [A]. It is also a useful
+    robust indicator of charge/discharge direction.
+
+Current_A_std
+    Sample standard deviation of current [A]. A low value supports constant-
+    current behavior; a larger value can indicate ramps, pulses, CV current decay,
+    transitions, or noisy data.
+
+6. TEMPERATURE COLUMNS
+----------------------
+For T_Cell_degC, T_Anode_degC, T_Cathode_degC, and T_cold_degC:
+
+<temperature>_start / _end / _mean
+    First, last, and arithmetic mean valid temperatures in degrees Celsius.
+
+T_Chamber_degC_start / _end / _mean
+    First, last, and arithmetic mean valid chamber temperatures [degC].
+
+T_Chamber_degC_unique
+    String representation of a sorted list of representative chamber setpoint
+    temperatures. Values are rounded to the nearest 5 degC and retained only if
+    they occur in at least 5% of the valid step samples.
+    Examples:
+      [25.0]
+      [-10.0, 25.0]
+      []                no usable chamber-temperature value
+
+7. PHASE DETECTION
+------------------
+step_phase
+    Deterministically detected electrical phase based only on Voltage_V,
+    Current_A, and time samples within the calculated step. Possible values:
+
+    REST
+        Median absolute current is below the rest threshold. With the standard
+        capacity-scaled parameters, i_rest_A = 0.5 A.
+
+    CC
+        A leading constant-current run is detected. Current remains within the
+        larger of:
+          - 2% of the median current, or
+          - 0.5 A absolute tolerance.
+        The detected run must last at least 2 s.
+
+    CP
+        A leading constant-power run is detected using P = V x I. Power remains
+        within the larger of:
+          - 2% of median power, or
+          - 0.5 A x median voltage as an absolute power tolerance.
+        The detected run must last at least 2 s.
+
+    CV
+        A constant-voltage tail starts effectively at the beginning of the step.
+        Voltage stays within 0.005 V of the end voltage, the phase lasts at least
+        2 s, and absolute current decreases sufficiently.
+
+    CC-CV
+        A leading CC phase followed by a detected CV tail.
+
+    CP-CV
+        A leading CP phase followed by a detected CV tail.
+
+    OTHER
+        Required voltage/current/time inputs are present, but no valid REST, CC,
+        CP, CV, CC-CV, or CP-CV phase is detected. Steps with fewer than three
+        valid samples are also OTHER unless they satisfy the REST criterion.
+
+    GAP
+        Virtual row inserted during enrichment for an inter-step pause longer
+        than the configured gap threshold. In the current enrichment defaults,
+        the threshold is 900 s. GAP is assigned directly and is not inferred by
+        the electrical phase detector.
+
+CV-tail detection details
+    The end voltage is the median of the final three valid voltage samples. A
+    trailing voltage run must stay within +/-0.005 V of that end voltage and last
+    at least 2 s. Absolute current must drop by at least one of:
+      - 3% of the absolute current at the start of the CV tail; or
+      - 1% of nominal capacity in amperes when phase_params(capacity) is used.
+
+CC versus CP choice
+    CC and CP candidate runs are both evaluated before the CV tail. The candidate
+    covering the longer leading run wins. Therefore a nominally CC signal may be
+    classified as CP if the power-stability run is longer, and vice versa.
+
+phase_coverage
+    (detected head duration + detected CV duration) / total step duration.
+    Typical range is 0 to 1:
+      - 1.0: essentially the whole step is explained by the detected phase(s);
+      - near 1.0: most of the step is explained, with a small transition/uncovered
+        section;
+      - low value: only a small portion is explained;
+      - 0.0: no CC/CP/CV duration was detected for a nonzero-duration step;
+      - NaN: duration is zero/invalid or the required phase inputs are unavailable.
+    REST steps are explicitly assigned phase_coverage = 1.0.
+
+8. CC/CP PHASE FEATURES
+-----------------------
+These fields are populated for CC or CP heads, including the head of CC-CV or
+CP-CV steps. Otherwise they are normally NaN.
+
+cc_duration_s
+    Duration of the detected leading CC/CP run [s]. The name is retained for
+    both CC and CP heads.
+
+cc_current_A
+    Median current over the detected CC/CP head [A].
+
+cp_power_W
+    Median/reference power V x I over a detected CP head [W]. NaN for CC heads.
+
+cc_end_V
+    Voltage at the final sample of the detected CC/CP head [V].
+
+cc_dQ_Ah
+    Capacity_Ah at the end of the detected head minus Capacity_Ah at its start
+    [Ah]. Sign follows the corrected-capacity convention.
+
+cc_dSOC
+    SOC_corrected at the end of the detected head minus SOC_corrected at its
+    start [percentage points].
+
+9. CV PHASE FEATURES
+--------------------
+These fields are populated only when a valid CV tail is detected.
+
+cv_duration_s
+    Duration from the first detected CV-tail sample to the final sample [s].
+
+cv_voltage_V
+    Median voltage of the final three valid samples [V].
+
+cv_end_current_A
+    Final valid current sample in the step [A].
+
+cv_dQ_Ah
+    Capacity_Ah at the end of the step minus Capacity_Ah at the start of the
+    detected CV tail [Ah].
+
+cv_dSOC
+    SOC_corrected at the end of the step minus SOC_corrected at the start of the
+    detected CV tail [percentage points].
+
+10. STEP DELTA COLUMNS
+----------------------
+delta_Capacity_step_Ah / delta_Energy_step_Wh
+    Net cycler step capacity/energy. The logic attempts to detect whether the
+    cycler counter reset at the step boundary:
+      - likely reset: use the step's end value;
+      - otherwise: use end - start.
+
+    The reset check compares the absolute start value with the capacity that
+    could accumulate during the inter-step pause based on start current. This is
+    a heuristic and should be reviewed when timestamps overlap or are irregular.
+
+delta_Q_Tot_Cha_calc / delta_Q_Tot_Dch_calc
+delta_E_Tot_Cha_calc / delta_E_Tot_Dch_calc
+    Difference between the current step's cumulative end value and the previous
+    step's cumulative end value. For the first step, the current step's own start
+    value is used as the reference. GAP rows receive 0.0.
+
+11. ENRICHMENT AND VERSIONING
+-----------------------------
+eval_version
+    Version of the step-enrichment logic. In the supplied implementation the
+    value is 3.0. It should change whenever feature logic or parameters change so
+    downstream processing can identify files requiring recalculation.
+
+Virtual GAP row behavior
+    A GAP row is inserted when the pause between one step's end and the next
+    step's start exceeds 900 s under the current defaults. It has:
+      - step_id = previous step_id + 0.5
+      - mode = GAP
+      - step_phase = GAP
+      - step_name = Gap
+      - n_rows = 0
+      - row_start = row_end = previous row_end
+      - cumulative start/end values held at the previous step's end values
+      - all delta fields set to 0.0
+      - voltage and cell-temperature start/end values bridging the adjacent steps
+
+12. IMPORTANT INTERPRETATION NOTES
+----------------------------------
+- mode and step_phase are related but not interchangeable. For example, a CHARGE
+  mode may have step_phase CC, CP, CV, CC-CV, CP-CV, or OTHER.
+- NaN in a phase-specific column usually means "not applicable" rather than an
+  evaluation error.
+- phase_coverage evaluates how much of the step duration is explained by the
+  detected CC/CP/CV portions. It is not a data-quality score by itself.
+- step_phase is signal-based and does not use cycler setpoints or Step_name.
+- Chamber unique temperatures are representative rounded values, not every raw
+  temperature observed.
+- _at_<t>s features refer to elapsed time from the first valid sample of that
+  signal/time pair and may be interpolated.
+- A single calculated step can span multiple original cycler steps.

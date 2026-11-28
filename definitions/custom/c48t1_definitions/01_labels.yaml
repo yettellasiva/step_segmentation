@@ -2,11 +2,12 @@
 # Project labels below are checked BEFORE the included shared labels, so a label here
 # can refine or replace a shared one of the same name.
 
- # path relative to the definitions/ folder
-include: [common/TA_T/label_C3_cha_dch.yaml,
-          common/TA_T/label_rest.yaml,
-          common/TA_T/label_storage.yaml,
-          common/TA_T/label_spike.yaml]
+ # path relative to the definitions/ folder and in the order of priority
+include: [common/PV8450_202405/label_pulses.yaml,
+          common/PV8450_202405/label_rest.yaml,
+          common/PV8450_202405/label_spike.yaml,
+          common/PV8450_202405/label_std_cha_dch.yaml,
+          common/PV8450_202405/label_storage.yaml]
 
 labels: {}
   # Example — a short step inside a C/3 discharge whose current jumps vs. the previous step:

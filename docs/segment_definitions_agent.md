@@ -72,8 +72,8 @@ step_features.csv → label_steps (pass 1) → merge_steps → label_steps (pass
 | Ranges | `column: [low, high]`, limits included, `null` = open side. No `<` / `>`; use a small offset |
 | Equality | `mode: DISCHARGE`; any of: `mode: CHARGE\|DISCHARGE` (not a list: a 2-item list is a range) |
 | OR | `or.<name>: [{…}, {…}]` for alternatives of some rows; `- {…} - {…}` blocks only if the whole label differs. Never write all combinations by hand |
-| Neighbours | `prev.column` / `next.column` = previous / next row of the step table, including Gap rows |
-| Formulas | Only in range limits. Names: `cap, e_nom, vmax, vmin, vbc, std_temp, temp_tol, inf`, `prev.X`, `next.X`, `prev['col_%']`. Functions: `abs(x)`, `min(a, b)`, `max(a, b)`. Operators `+ - * / ** % //` |
+| Neighbours | `prev.column` / `next.column` = previous / next row of the step table, including Gap rows; `prev2.` / `next3.` … = N rows away (no such row → fails); `this.column` = this row |
+| Formulas | Only in range limits. Names: `cap, e_nom, vmax, vmin, vbc, std_temp, temp_tol, inf`, `this.X`, `prev.X`, `next.X`, `prev2.X`, `next3.X` …, `prev['col_%']`. Functions: `abs(x)`, `min(a, b)`, `max(a, b)`. Operators `+ - * / ** % //` |
 | Relative limits | Prefer `cap/3`, `vmin+0.005`, `std_temp+temp_tol` over fixed numbers, so one label fits all samples |
 | Signs | Discharge current and capacity are **negative** |
 | Missing values | NaN, `prev` of the first row, `next` of the last row, and missing columns **never match**. Use an `or.` alternative if a sensor may be missing |

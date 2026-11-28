@@ -1,0 +1,47 @@
+# -------------------------------- LABEL RULES --------------------------------
+# Order = priority: the first label that fits a step wins.
+#
+# Conditions (all rows of a label must hold = AND)
+#   column: [low, high]          range, low <= x <= high, null = open side
+#   column: value                equality, 'A|B' = any of
+#   prev.column / next.column    condition on the previous / next step
+#   or.<name>: [{...}, {...}]    OR group: one block must hold; ANDed with the other rows
+#   - {...}  - {...}             list of blocks = OR for the whole label
+#
+#   Example: C/3 discharge, chamber OR cell temperature at std_temp
+#     CC_DCH_C3:
+#       Current_A_median: [-cap*1.05/3, -cap*0.95/3]
+#       or.temp:
+#         - {T_Chamber_degC_mean: [std_temp-temp_tol, std_temp+temp_tol]}
+#         - {T_Cell_degC_mean:    [std_temp-temp_tol, std_temp+temp_tol]}
+#
+# Formulas in range limits (numbers or arithmetic, e.g. [cap*0.95/3, cap*1.05/3])
+#   cap       nominal_capacity [Ah]
+#   e_nom     nominal_energy [Wh]      (NaN if missing -> never matches)
+#   vmax      max_volt [V]
+#   vmin      min_volt [V]
+#   vbc       vbc_volt [V]
+#   std_temp  std_temperature [°C]     (default 25)
+#   temp_tol  temp_threshold [± °C]    (default 3)
+#   inf       infinity
+#   prev.X / next.X   column X of the previous / next step (none at the ends -> no match)
+#                     special characters: "prev['SOC_eval_start_%']*2" (quoted)
+#   Functions: abs(x), min(a, b), max(a, b)    Operators: + - * / ** % //
+# ------------------------------------------------------------------------------
+
+labels:
+
+  SHORT_CURRENT_SPIKE:  # short current pulse which can be ignored generally
+    description:        Short charge/discharge (≤ 0.5 s) during rest with limited amplitude
+    mode:               CHARGE|DISCHARGE
+    time_duration_s:    [ 0, 0.5 ]
+    prev.mode:          REST
+    next.mode:          REST
+    Current_A_median:   [ -cap/50, cap/50 ]
+
+  CURRENT_SPIKE:        # short current pulse inside a rest which needs attention
+    description:        Short charge/discharge (≤ 1 s) between two rest steps
+    mode:               CHARGE|DISCHARGE
+    time_duration_s:    [ 0, 1 ]
+    prev.mode:          REST
+    next.mode:          REST

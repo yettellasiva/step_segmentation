@@ -14,11 +14,14 @@ Conditions (from 01_labels.yaml, also used by pattern / segment items):
     column: [low, high]          range, limits included, null = open side, the order of low/high does not matter
     column: value                equality;  'A|B' = any of
     prev.column / next.column    the same condition on the previous / next step of the table
+    prev2.column / next3.column  ... on the step 2 before / 3 after (any number); this.column = column
     or.<name>: [{...}, {...}]    OR group: one block must hold; ANDed with the other rows
     - {...}  - {...}             list of blocks = OR for the whole label
-    limits may be formulas:      cap*0.95/3,  prev.Current_A_median*1.5,  prev['SOC_eval_start_%']
+    limits may be formulas:      cap*0.95/3,  prev.Current_A_median*1.5,  prev['SOC_eval_start_%'],
+                                 this.Current_A_median*0.9,  prev2.Current_A_median
 
-A missing value never matches (NaN, prev of the first step, next of the last step).
+A missing value never matches (NaN, prev of the first step, next of the last step, next3 of
+the last 3 steps, ...).
 A column missing in the step file makes its condition never match (logged as a warning).
 """
 from __future__ import annotations
@@ -28,15 +31,17 @@ import logging
 import numpy as np
 import pandas as pd
 
-from .definitions import FORMULA_FUNCTIONS
+from .definitions import FORMULA_FUNCTIONS, neighbour_shift
 
 logger = logging.getLogger(__name__)
 
 
 class _NeighbourStep:
-    """`prev` / `next` inside formulas: prev.Current_A_median or prev['SOC_eval_start_%'].
+    """`this` / `prev` / `next` / `prevN` / `nextN` inside formulas: prev.Current_A_median,
+    prev2['SOC_eval_start_%'], this.Current_A_median.
 
-    Returns the column shifted by one step (prev: value of the step before, next: the step after)."""
+    Returns the column shifted by `shift` steps (1: the step before, -1: the step after, 0: this step);
+    rows without such a neighbour get NaN."""
 
     def __init__(self, steps: pd.DataFrame, shift: int, missing_columns: set):
         self._steps, self._shift, self._missing_columns = steps, shift, missing_columns
@@ -50,10 +55,24 @@ class _NeighbourStep:
     __getattr__ = __getitem__
 
 def _formula_scope(steps: pd.DataFrame, definition: dict, missing_columns: set) -> dict:
-    """Names a formula may use: formula_names (cap, vmax, …), abs/min/max, and prev / next for `steps`."""
-    return {**definition["formula_names"], **FORMULA_FUNCTIONS,
-            "prev": _NeighbourStep(steps, 1, missing_columns),
-            "next": _NeighbourStep(steps, -1, missing_columns)}
+    """Names a formula may use: formula_names (cap, vmax, …), abs/min/max, and this / prev / next /
+    prevN / nextN for `steps` (a neighbour name is resolved when the formula first uses it)."""
+    return _FormulaScope({**definition["formula_names"], **FORMULA_FUNCTIONS}, steps, missing_columns)
+
+
+class _FormulaScope(dict):
+    """Formula names; this / prevN / nextN are created on first lookup (eval() uses __missing__)."""
+
+    def __init__(self, names: dict, steps: pd.DataFrame, missing_columns: set):
+        super().__init__(names)
+        self._steps, self._missing_columns = steps, missing_columns
+
+    def __missing__(self, name):
+        shift = neighbour_shift(name)
+        if shift is None:
+            raise KeyError(name)
+        self[name] = _NeighbourStep(self._steps, shift, self._missing_columns)
+        return self[name]
 
 
 def item_condition_masks(labeled_steps: pd.DataFrame, definition: dict,
@@ -97,7 +116,7 @@ def evaluate_limit(limit, names: dict, n_steps: int) -> np.ndarray:
     Parameters
     ----------
     limit   : number, formula string (checked by definitions.check_formula) or None (= open, NaN)
-    names   : formula names (cap, vmax, …, prev, next, abs, min, max)
+    names   : formula names (cap, vmax, …, this, prev, next, prevN, nextN, abs, min, max)
     n_steps : length of the step table
 
     Returns
@@ -119,7 +138,7 @@ def condition_mask(steps: pd.DataFrame, column: str, neighbour: str | None, cond
     ----------
     steps           : step table (index 0..n-1)
     column          : step-feature column, e.g. "Current_A_median"
-    neighbour       : None (this step), "prev" or "next"
+    neighbour       : None or "this" (this step), "prev" / "next", "prev2" / "next3" / ...
     condition       : ("range", low, high) or ("equal", value | [values]);
                       ("any", …) groups are handled by block_mask
     names           : formula scope (see _formula_scope)
@@ -134,10 +153,9 @@ def condition_mask(steps: pd.DataFrame, column: str, neighbour: str | None, cond
         missing_columns.add(column)
         return np.zeros(n_steps, bool)
     values = steps[column]
-    if neighbour == "prev":
-        values = values.shift(1)
-    elif neighbour == "next":
-        values = values.shift(-1)
+    shift = neighbour_shift(neighbour) if neighbour else 0
+    if shift:
+        values = values.shift(shift)          # rows without such a neighbour get NaN → no match
 
     if condition[0] == "equal":
         wanted = condition[1] if isinstance(condition[1], list) else [condition[1]]
@@ -148,7 +166,7 @@ def condition_mask(steps: pd.DataFrame, column: str, neighbour: str | None, cond
     _, low_limit, high_limit = condition
     numbers = pd.to_numeric(values, errors="coerce").to_numpy(float)
     low, high = evaluate_limit(low_limit, names, n_steps), evaluate_limit(high_limit, names, n_steps)
-    # null = open side, but NaN coming from a formula (e.g. prev of the first step) = no match
+    # null = open side, but NaN coming from a formula (e.g. prev of the first step, next3 near the end) = no match
     formula_has_no_value = np.zeros(n_steps, bool)
     for raw_limit, limit_values in ((low_limit, low), (high_limit, high)):
         if isinstance(raw_limit, str):

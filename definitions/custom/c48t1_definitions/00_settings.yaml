@@ -5,5 +5,5 @@ settings:
   merge:
     join_adjacent: [ REST ]            # consecutive steps with this label → one row
     bridges:                           # A, BRIDGE, B → one row when A and B have the same mode
-      REST_SPIKE:    3                 # max. per merged row; null = no limit
-      CURRENT_SPIKE: 5
+      REST_SPIKE:    1                 # max. per merged row; null = no limit
+      SHORT_CURRENT_SPIKE: 3

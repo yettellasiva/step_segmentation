@@ -1,0 +1,167 @@
+# -------------------------------- LABEL RULES --------------------------------
+# Order = priority: the first label that fits a step wins.
+#
+# Conditions (all rows of a label must hold = AND)
+#   column: [low, high]          range, low <= x <= high, null = open side
+#   column: value                equality, 'A|B' = any of
+#   prev.column / next.column    condition on the previous / next step
+#   or.<name>: [{...}, {...}]    OR group: one block must hold; ANDed with the other rows
+#   - {...}  - {...}             list of blocks = OR for the whole label
+#
+#   Example: C/3 discharge, chamber OR cell temperature at std_temp
+#     CC_DCH_C3:
+#       Current_A_median: [-cap*1.05/3, -cap*0.95/3]
+#       or.temp:
+#         - {T_Chamber_degC_mean: [std_temp-temp_tol, std_temp+temp_tol]}
+#         - {T_Cell_degC_mean:    [std_temp-temp_tol, std_temp+temp_tol]}
+#
+# Formulas in range limits (numbers or arithmetic, e.g. [cap*0.95/3, cap*1.05/3])
+#   cap       nominal_capacity [Ah]
+#   e_nom     nominal_energy [Wh]      (NaN if missing -> never matches)
+#   vmax      max_volt [V]
+#   vmin      min_volt [V]
+#   vbc       vbc_volt [V]
+#   std_temp  std_temperature [°C]     (default 25)
+#   temp_tol  temp_threshold [± °C]    (default 3)
+#   inf       infinity
+#   prev.X / next.X   column X of the previous / next step (none at the ends -> no match)
+#                     special characters: "prev['SOC_eval_start_%']*2" (quoted)
+#   Functions: abs(x), min(a, b), max(a, b)    Operators: + - * / ** % //
+# ------------------------------------------------------------------------------
+
+# Labels only CC pulses, CC-CV pulses based on 2s,10s,18s,180s duration alone,
+# doesnt check for temperature or current - it general pulse
+
+labels:
+
+  CC_PULSE_DCH_2s:
+    description: 2s discharge pulse
+    mode: DISCHARGE
+    next.mode: REST
+    prev.mode: REST
+    time_duration_s: [ 1.9,  2.1 ]       # 0.1 s buffer
+    step_phase: CC
+    or.current_check:
+      - { cc_current_A: [ -1201, -cap/100 ],
+          phase_coverage: [ 0.99, null ] }
+
+  CC_PULSE_DCH_10s:
+    description: 10s discharge pulse
+    mode:  DISCHARGE
+    next.mode: REST
+    prev.mode: REST
+    time_duration_s:    [ 9.8,  10.2 ]       # 0.2 s buffer
+    step_phase:         CC
+    or.current_check:
+      - { cc_current_A: [ -1201, -cap/100 ],
+          phase_coverage: [ 0.99, null ] }
+
+  CC_PULSE_DCH_18s:
+    description: 18s discharge pulse
+    mode:  DISCHARGE
+    next.mode: REST
+    prev.mode: REST
+    time_duration_s:    [ 17.8,  18.2 ]       # 0.2 s buffer
+    step_phase:         CC
+    cc_current_A: [ -1201, -cap/100 ]
+    phase_coverage: [ 0.99, null ]
+
+  CC_PULSE_DCH_180s:
+    description: 180s discharge pulse
+    mode: DISCHARGE
+    next.mode: REST
+    prev.mode: REST
+    time_duration_s: [ 179,  181 ]       # 1 s buffer
+    step_phase: CC
+    or.current_check:
+      - { cc_current_A: [ -1201, -cap/100 ],
+          phase_coverage: [ 0.99, null ] }
+
+  CC_PULSE_CHA_2s:
+    description: 2s charge pulse
+    mode: CHARGE
+    next.mode: REST
+    prev.mode: REST
+    time_duration_s: [ 1.9,  2.1 ]       # 0.1 s buffer
+    step_phase: CC
+    or.current_check:
+      - { cc_current_A: [ 0.5, 601 ],
+          phase_coverage: [ 0.99, null ] }
+
+  CC_PULSE_CHA_10s:
+    description: 10s charge pulse
+    mode: CHARGE
+    next.mode: REST
+    prev.mode: REST
+    time_duration_s: [ 9.8,  10.2 ]       # 0.2 s buffer
+    step_phase: CC
+    or.current_check:
+      - { cc_current_A: [ 0.5, 601 ],
+          phase_coverage: [ 0.99, null ] }
+
+  CC_PULSE_CHA_18s:
+    description: 18s charge pulse
+    mode:  CHARGE
+    next.mode: REST
+    prev.mode: REST
+    time_duration_s:    [ 17.8,  18.2 ]       # 0.2 s buffer
+    step_phase:         CC
+    or.current_check:
+      - { cc_current_A: [ 0.5, 601 ],
+          phase_coverage: [ 0.99, null ] }
+
+  CC_PULSE_CHA_180s:
+    description: 180s charge pulse
+    mode: CHARGE
+    next.mode: REST
+    prev.mode: REST
+    time_duration_s: [ 179.5,  180.5 ]       # 0.5 s buffer
+    step_phase: CC
+    or.current_check:
+      - { cc_current_A: [ 0.5, 601 ],
+          phase_coverage: [ 0.99, null ] }
+
+
+  CCCV_PULSE_CHA_2s:
+    description: 2s CC-CV charge pulse
+    mode: CHARGE
+    next.mode: REST
+    prev.mode: REST
+    time_duration_s: [ 1.9,  2.1 ]       # 0.1 s buffer
+    step_phase: CC-CV | CV
+    or.current_check:
+      - { cc_current_A: [ 0.5, 601 ],
+          phase_coverage: [ 0.99, null ] }
+
+  CCCV_PULSE_CHA_10s:
+    description: 10s CC-CV charge pulse
+    mode: CHARGE
+    next.mode: REST
+    prev.mode: REST
+    time_duration_s: [ 9.8,  10.2 ]       # 0.2 s buffer
+    step_phase: CC-CV | CV
+    or.current_check:
+      - { cc_current_A: [ 0.5, 601 ],
+          phase_coverage: [ 0.99, null ] }
+
+  CCCV_PULSE_CHA_18s:
+    description: 18s CC-CV charge pulse
+    mode: CHARGE
+    next.mode: REST
+    prev.mode: REST
+    time_duration_s: [ 17.8,  18.2 ]       # 0.2 s buffer
+    step_phase: CC-CV | CV
+    or.current_check:
+      - { cc_current_A: [ 0.5, 601 ],
+          phase_coverage: [ 0.99, null ] }
+
+  CCCV_PULSE_CHA_180s:
+    description: 180s CC-CV charge pulse
+    mode: CHARGE
+    next.mode: REST
+    prev.mode: REST
+    time_duration_s: [ 179.5,  180.5 ]       # 0.5 s buffer
+    step_phase: CC-CV | CV
+    or.current_check:
+      - { cc_current_A: [ 0.5, 601 ],
+          phase_coverage: [ 0.99, null ] }

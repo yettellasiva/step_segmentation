@@ -223,6 +223,8 @@ labels:
 | `column: value` | equality. Text is compared exactly (case-sensitive, surrounding spaces ignored); numbers as numbers (`5` = `5.0`) |
 | `column: A\|B\|C` | any of the values |
 | `prev.column: …` / `next.column: …` | the same condition, on the previous / next row of the step table |
+| `prev2.column: …` / `next3.column: …` | the same condition, on the row 2 before / 3 after (any number; `prev1` = `prev`) |
+| `this.column: …` | same as `column: …` |
 | `or.<name>: [{…}, {…}]` | OR group: at least one block must hold; ANDed with the other rows. `<name>` is free text, so several groups per label are possible. Groups may be nested |
 | `- {…}` `- {…}` | OR of whole blocks (label level); inside a block all conditions must hold |
 
@@ -231,7 +233,8 @@ labels:
 - Float equality (e.g. `SOC_eval_end_%: 0`) almost never matches; use a range.
 - **Formulas** are allowed in range limits only, not in equality values. They may use `cap, e_nom, vmax, vmin, vbc,
   std_temp, temp_tol, inf`, numbers, `+ - * / ** % //`, `abs(x)`, `min(a, b)`, `max(a, b)`, and neighbour values
-  `prev.<column>` / `next.<column>`. For column names with special characters use `prev['SOC_eval_start_%']`,
+  `prev.<column>` / `next.<column>`, further neighbours `prev2.<column>` / `next3.<column>` (any number), and this
+  step's own columns `this.<column>`. For column names with special characters use `prev['SOC_eval_start_%']`,
   quoted in YAML (§3.4).
 - **Priority:** labels are checked in order. The first label whose conditions hold wins, and a step has exactly one label.
   Put specific labels before general ones (`INIT_CC_DCH_C3` and `CC_DCH_C3` before `CC_DCH_C3_PARTIAL`).
@@ -242,7 +245,8 @@ labels:
 **Missing values never match**
 
 - A NaN in the column fails the condition. Gap rows, for example, have no current.
-- `prev` of the first step and `next` of the last step have no value, so `prev.` / `next.` conditions fail there.
+- `prev` of the first step and `next` of the last step have no value, so `prev.` / `next.` conditions fail there
+  (likewise `prev2` on the first 2 steps, `next3` on the last 3, …).
 - A formula without a value (e.g. `prev.Current_A_median*1.5` on the first step) fails, even when the other limit is `null`.
 - A column missing from the step file fails (warning, see §3.3). In an `or.` group this only disables that alternative.
 

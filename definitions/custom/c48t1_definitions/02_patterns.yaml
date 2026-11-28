@@ -13,14 +13,16 @@
 include: []
 
 patterns:
-  cha_rest15_dch:
-    - CC_CHA_C3
-    - { label: REST, time_duration_s: [ 14*60, 16*60 ] }    # REST lasting 14–16 min
-    - CC_DCH_C3
+  std_cycle:
+    description: PV 8450 standard cycle - standard discharge, rest, standard charge, rest
+    sequence:
+      - CC_STD_DCH_FULL
+      - { label: REST, time_duration_s: [29*60, 31*60] }
+      - CCCV_STD_CHA_FULL
+      - { label: REST, time_duration_s: [29*60, 31*60] }
 
-  std_cycle: [CC_CHA_C3, REST, CC_DCH_C3, REST]             # plain items work as before
-
-  init_dch: [ INIT_DCH, REST ]
-
-  pulse: [ DCH_C3_CC_PARTIAL, REST, DCH_Pulse_18s_1.5C, REST, CHA_Pulse_18s_1.5C, REST ]
-
+  init_dch:
+    description: Initial standard discharge followed by rest
+    sequence:
+      - INIT_CC_STD_DCH
+      - REST

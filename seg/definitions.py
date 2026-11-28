@@ -36,7 +36,25 @@ MERGE_KEYS = {"join_adjacent", "bridges"}
 PATTERN_KEYS = {"description", "sequence"}
 SEGMENT_KEYS = {"description", "variants"}
 CHAIN_KEYS = {"description", "variants", "between", "between_pairs"}
-NEIGHBOURS = ("prev", "next")
+NEIGHBOUR_NAME = re.compile(r"^(?:this|(prev|next)([1-9]\d*)?)$")   # this, prev, prev2, next, next3, ...
+
+
+def neighbour_shift(name) -> int | None:
+    """Row shift for a neighbour name: 'this' → 0, 'prev' / 'prev1' → 1, 'prev2' → 2,
+    'next' → -1, 'next3' → -3 (pandas .shift() sign); None if `name` is not a neighbour name."""
+    match = NEIGHBOUR_NAME.match(str(name))
+    if not match:
+        return None
+    direction, steps = match.groups()
+    if direction is None:
+        return 0
+    return int(steps or 1) * (1 if direction == "prev" else -1)
+
+
+def is_neighbour(name) -> bool:
+    return neighbour_shift(name) is not None
+
+
 FORMULA_FUNCTIONS = {"abs": np.abs, "min": np.minimum, "max": np.maximum}
 FORMULA_ARG_COUNT = {"abs": 1, "min": 2, "max": 2}
 _TERM = re.compile(r"^\s*([^\s*]+)\s*(?:\*\s*(\d+))?\s*$")
@@ -86,7 +104,8 @@ def formula_names(sample_config: dict) -> dict:
                 e_nom=sample_config.get("nominal_energy", np.nan), inf=np.inf)
 def check_formula(formula: str, allowed_names: set) -> tuple[list[str], set]:
     """Check a formula against a whitelist (numbers, + - * / ** % //, allowed names,
-    prev.<column> / next.<column>, prev['column'], abs(), min(a, b), max(a, b)).
+    this.<column> / prev.<column> / next.<column>, prevN / nextN (prev2.X, next3.X),
+    prev['column'], abs(), min(a, b), max(a, b)).
     Parameters
     ----------
     formula       : e.g. "cap*0.95/3" or "prev.Current_A_median*1.5"
@@ -94,7 +113,7 @@ def check_formula(formula: str, allowed_names: set) -> tuple[list[str], set]:
     Returns
     -------
     (problems, neighbour_columns) — problems is empty when the formula is fine;
-    neighbour_columns = columns used via prev/next
+    neighbour_columns = columns used via this / prev / next / prevN / nextN
     """
     try:
         tree = ast.parse(str(formula), mode="eval")
@@ -110,20 +129,21 @@ def check_formula(formula: str, allowed_names: set) -> tuple[list[str], set]:
             if not isinstance(node.value, (int, float, str)):
                 problems.append(f"formula '{formula}': constant {node.value!r} not allowed")
         elif isinstance(node, ast.Name):
-            if node.id not in allowed_names and node.id not in NEIGHBOURS and node.id not in FORMULA_FUNCTIONS:
+            if node.id not in allowed_names and not is_neighbour(node.id) and node.id not in FORMULA_FUNCTIONS:
                 problems.append(f"formula '{formula}': unknown name '{node.id}' "
-                                f"(allowed: {', '.join(sorted(allowed_names))}, prev.X, next.X, abs, min, max)")
+                                f"(allowed: {', '.join(sorted(allowed_names))}, this.X, prev.X, next.X, "
+                                f"prev2.X, next3.X, ..., abs, min, max)")
         elif isinstance(node, ast.Attribute):
-            if isinstance(node.value, ast.Name) and node.value.id in NEIGHBOURS:
+            if isinstance(node.value, ast.Name) and is_neighbour(node.value.id):
                 neighbour_columns.add(node.attr)
             else:
-                problems.append(f"formula '{formula}': only prev.<column> / next.<column> may use '.'")
+                problems.append(f"formula '{formula}': only this / prev / next / prevN / nextN .<column> may use '.'")
         elif isinstance(node, ast.Subscript):
-            if (isinstance(node.value, ast.Name) and node.value.id in NEIGHBOURS
+            if (isinstance(node.value, ast.Name) and is_neighbour(node.value.id)
                     and isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str)):
                 neighbour_columns.add(node.slice.value)
             else:
-                problems.append(f"formula '{formula}': only prev['column'] / next['column'] may use [ ]")
+                problems.append(f"formula '{formula}': only this / prev / next / prevN / nextN ['column'] may use [ ]")
         elif isinstance(node, ast.Call):
             if not (isinstance(node.func, ast.Name) and node.func.id in FORMULA_FUNCTIONS) or node.keywords:
                 problems.append(f"formula '{formula}': only abs(), min(a, b), max(a, b) may be called")
@@ -231,7 +251,7 @@ def _for_hash(obj):
     return obj if isinstance(obj, (int, float, str, type(None))) else str(obj)
 def _parse_block(raw_block, where: str, allowed_names: set, problems: list) -> list:
     """Parse one block {column: condition, ...} into [(column, neighbour, condition), ...].
-    neighbour = None | "prev" | "next"; condition = ("range", low, high) | ("equal", value | [values]).
+    neighbour = None | "this" | "prev" | "next" | "prev2" | "next3" | ... (see neighbour_shift); condition = ("range", low, high) | ("equal", value | [values]).
     'or.<name>: [{...}, {...}]' = OR group; each item is a block (AND inside). It is stored as
     ("or.<name>", "or", ("any", [block, ...])). 'description' keys are ignored."""
     conditions = []
@@ -247,7 +267,7 @@ def _parse_block(raw_block, where: str, allowed_names: set, problems: list) -> l
             group = [_parse_block(item, f"{where}, {column}", allowed_names, problems) for item in condition]
             conditions.append((column, "or", ("any", [g for g in group if g])))
             continue
-        neighbour, base_column = (prefix, rest) if prefix in NEIGHBOURS and rest else (None, column)
+        neighbour, base_column = (prefix, rest) if is_neighbour(prefix) and rest else (None, column)
         if isinstance(condition, list):
             if len(condition) != 2:
                 problems.append(f"{where}, {column}: a range needs exactly [low, high] "
@@ -301,7 +321,7 @@ def load_definition(definition_name: str, sample_config: dict,
     dict with
       name       : definition_name
       labels     : {label: [block, ...]} in priority order (first match wins); label descriptions are dropped.
-                   block = [(column, neighbour, condition)], neighbour = None | "prev" | "next" | "or",
+                   block = [(column, neighbour, condition)], neighbour = None | "this" | "prevN" | "nextN" | "or",
                    condition = ("range", low, high), ("equal", value | [values])
                                  or ("any", [block, ...])  for an or.<name> group (neighbour "or")
       patterns   : {pattern: {"description", "labels": [token, ...]}}

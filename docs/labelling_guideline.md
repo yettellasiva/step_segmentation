@@ -77,6 +77,8 @@ CC_DCH_C3:
 | `column: value` | equality. Text is compared exactly; numbers as numbers (`5` = `5.0`) |
 | `column: A\|B\|C` | any of the values |
 | `prev.column: …` / `next.column: …` | same condition on the previous / next row of the step table |
+| `prev2.column: …` / `next3.column: …` | same condition on the row 2 before / 3 after (any number; `prev1` = `prev`). No such row → fails |
+| `this.column: …` | same as `column: …` (this row) |
 | `or.<name>: [{…}, {…}]` | OR group: at least one block must hold; ANDed with the other rows. Several groups per label allowed; can be nested |
 | `- {…}` `- {…}` | list of blocks = OR for the whole label |
 
@@ -101,10 +103,12 @@ Limits can be numbers or arithmetic formulas. Formulas are **not** allowed in eq
 | `std_temp` | `std_temperature` | Standard temperature [°C], default 25 |
 | `temp_tol` | `temp_threshold` | ± tolerance [°C], default 3 |
 | `inf` | built in | Infinity |
+| `this.X` | step table | Column X of this step, e.g. `[this.Ah_dch*0.9, inf]` |
 | `prev.X` / `next.X` | step table | Column X of the previous / next step |
+| `prev2.X` / `next3.X` … | step table | Column X of the step 2 before / 3 after (any number); NaN if there is no such step → fails |
 
 - Functions: `abs(x)`, `min(a, b)`, `max(a, b)`. Operators: `+ - * / ** % //`.
-- Columns with special characters: `"prev['SOC_eval_start_%']*2"` — quote the whole formula.
+- Columns with special characters: `"prev['SOC_eval_start_%']*2"` (also `this[...]`, `next2[...]`) — quote the whole formula.
 - Write rates readably: `cap/3` for C/3, `3*3600` for 3 h.
 
 ---
@@ -139,7 +143,7 @@ Limits can be numbers or arithmetic formulas. Formulas are **not** allowed in eq
 2. Update `02_patterns.yaml` if names changed.
 3. Load the definition once – it reports all problems in one list:
    ```python
-   load_definition("custom/c48t1_definitions", sample_config)
+    load_definition("custom/c48t1_definitions", sample_config)
    ```
 4. Run on **one cell** and check the `label` column: count of `NO_LABEL`, unexpected labels, boundary steps.
 5. Run all cells. A changed definition triggers a rerun via the definition hash;
